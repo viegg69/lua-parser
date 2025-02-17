@@ -33,7 +33,7 @@ make install
 
 ### Basic Parsing
 ```lua
-local parser = require('lua-parser')
+local parser = require('parser')
 local ast = parser.parse([[
   local x = 10
   function test(y)
@@ -57,94 +57,6 @@ ast:renameVariables(renameSettings)
 
 print(ast:toLua())
 ```
-
-### AST Structure Example
-```lua
-{
-	scope={
-		children={
-			{
-				children={},
-				isGlobal=false,
-				level=1,
-				name="chunk_scope",
-				referenceCounts={1},
-				skipIdLookup={},
-				variables={"env"},
-				variablesFromHigherScopes={
-				},
-				variablesLookup={env=1}
-			}
-		},
-		isGlobal=true,
-		level=0,
-		name="global_scope",
-		referenceCounts={1, 1},
-		skipIdLookup={},
-		variables={"_G", "print"},
-		variablesLookup={_G=1, print=2}
-	},
-	{
-		exprs={
-			{
-				exprs={
-					{
-						index=1,
-					}
-				},
-				vars={
-					{
-						index=1
-					}
-				}
-			}
-		}
-	},
-	{
-		args={
-			{
-				index=1
-			}
-		},
-		func={
-			index=2
-		}
-	}
-} 
-```
-
-## Compatibility Matrix
-
-| Environment     | Supported | Notes                          |
-|-----------------|-----------|--------------------------------|
-| Lua 5.1         | ✓         | Full support                   |
-| Lua 5.2-5.4     | ✓         | Verified compatibility         |
-| LuaJ            | ✓         | Java integration ready         |
-| LÖVE Framework  | ✓         | Tested with 11.3+              |
-| OpenResty       | ✓         | NGINX module compatible        |
-
-## Development Guide
-
-1. Clone repository
-2. Install development dependencies:
-   ```bash
-   make dev
-   ```
-3. Run tests:
-   ```bash
-   make test
-   ```
-
-## Contribution
-
-Contributions welcome! Please:
-1. Fork the repository
-2. Create feature branch
-3. Submit PR with test coverage
-
-## License
-
-MIT License - See [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
