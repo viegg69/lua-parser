@@ -1,12 +1,12 @@
 package = "parser"
 version = "dev-1"
 source = {
-	url = "git+https://github.com/thenumbernine/lua-parser"
+	url = "git+https://github.com/viegg69/lua-parser"
 }
 description = {
 	summary = "Lua Parser in Lua",
 	detailed = "Lua Parser in Lua",
-	homepage = "https://github.com/thenumbernine/lua-parser",
+	homepage = "https://github.com/viegg69/lua-parser",
 	license = "MIT"
 }
 dependencies = {

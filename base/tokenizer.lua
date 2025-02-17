@@ -1,7 +1,7 @@
-local table = require 'ext.table'
-local string = require 'ext.string'
-local class = require 'ext.class'
-local assert = require 'ext.assert'
+--local table = require 'ext.table'
+--local string = require 'ext.string'
+--local class = require 'ext.class'
+--local assert = require 'ext.assert'
 local DataReader = require 'parser.base.datareader'
 
 local Tokenizer = class()
@@ -16,23 +16,25 @@ function Tokenizer:init(data, ...)
 	self:initSymbolsAndKeywords(...)
 
 	self.r = DataReader(data)
-	self.gettokenthread = coroutine.create(function()
+	self.gettokenthread = function(self)
 		local r = self.r
-
-		while not r:done() do
+		while true do
 			self:skipWhiteSpaces()
-			if r:done() then break end
-
+			if r:done() then self.gettokenthread, self.nexttoken, self.nexttokentype = nil, nil, nil break end
+			
 			if self:parseComment() then
-			elseif self:parseString() then
-			elseif self:parseName() then
-			elseif self:parseNumber() then
-			elseif self:parseSymbol() then
-			else
-				error{msg="unknown token "..r.data:sub(r.index)}
+			elseif self:parseString() 
+			or self:parseName() 
+			or self:parseNumber() 
+			or self:parseSymbol() 
+			then break
+			else self.errors = {msg = "unknown token "..r.data:sub(r.index)} return self.errors
 			end
+			
+			if r:done() then self.gettokenthread, self.nexttoken, self.nexttokentype = nil, nil, nil break end
 		end
-	end)
+	end
+	
 end
 
 function Tokenizer:skipWhiteSpaces()
@@ -57,7 +59,7 @@ local start = r.index - #r.lasttoken
 		--local commentstr = r.data:sub(start, r.index-1)
 		-- TODO how to insert comments into the AST?  should they be their own nodes?
 		-- should all whitespace be its own node, so the original code text can be reconstructed exactly?
-		--coroutine.yield(commentstr, 'comment')
+		--self.nexttoken, self.nexttokentype = commentstr, 'comment'
 ---DEBUG(parser.base.tokenizer): print('read comment ['..start..','..(r.index-1)..']:'..commentstr)
 		return true
 	end
@@ -73,7 +75,7 @@ function Tokenizer:parseBlockString()
 	local r = self.r
 	if r:readblock() then
 ---DEBUG(parser.base.tokenizer): print('read multi-line string ['..(r.index-#r.lasttoken)..','..r.index..']: '..r.lasttoken)
-		coroutine.yield(r.lasttoken, 'string')
+		self.nexttoken, self.nexttokentype = r.lasttoken, 'string'
 		return true
 	end
 end
@@ -90,7 +92,7 @@ function Tokenizer:parseQuoteString()
 		while true do
 			r:seekpast'.'
 			if r.lasttoken == quote then break end
-			if r:done() then error{msg="unfinished string"} end
+			if r:done() then self.errors = {msg = "unfinished string"} return self.errors end
 			if r.lasttoken == '\\' then
 				local esc = r:canbe'.'
 				local escapeCodes = {a='\a', b='\b', f='\f', n='\n', r='\r', t='\t', v='\v', ['\\']='\\', ['"']='"', ["'"]="'", ['0']='\0', ['\r']='\n', ['\n']='\n'}
@@ -141,7 +143,8 @@ function Tokenizer:parseQuoteString()
 				else
 					if self.version >= '5.2' then
 						-- lua5.1 doesn't care about bad escape codes
-						error{msg="invalid escape sequence "..esc}
+						self.errors = {msg = "invalid escape sequence "..esc}
+					    return self.errors
 					end
 				end
 			else
@@ -149,7 +152,7 @@ function Tokenizer:parseQuoteString()
 			end
 		end
 ---DEBUG(parser.base.tokenizer): print('read quote string ['..start..','..(r.index-#r.lasttoken)..']: '..r.data:sub(start, r.index-#r.lasttoken))
-		coroutine.yield(s:concat(), 'string')
+		self.nexttoken, self.nexttokentype = s:concat(), 'string'
 		return true
 	end
 end
@@ -159,7 +162,7 @@ function Tokenizer:parseName()
 	local r = self.r
 	if r:canbe'[%a_][%w_]*' then	-- name
 ---DEBUG(parser.base.tokenizer): print('read name ['..(r.index-#r.lasttoken)..', '..r.index..']: '..r.lasttoken)
-		coroutine.yield(r.lasttoken, self.keywords[r.lasttoken] and 'keyword' or 'name')
+		self.nexttoken, self.nexttokentype = r.lasttoken, self.keywords[r.lasttoken] and 'keyword' or 'name'
 		return true
 	end
 end
@@ -186,7 +189,7 @@ end
 function Tokenizer:parseHexNumber()
 	local r = self.r
 	local token = r:mustbe('[%da-fA-F]+', 'malformed number')
-	coroutine.yield('0x'..token, 'number')
+	self.nexttoken, self.nexttokentype = '0x'..token, 'number'
 end
 
 function Tokenizer:parseDecNumber()
@@ -198,7 +201,7 @@ function Tokenizer:parseDecNumber()
 		n:insert(r.lasttoken)
 		n:insert(r:mustbe('[%+%-]%d+', 'malformed number'))
 	end
-	coroutine.yield(n:concat(), 'number')
+	self.nexttoken, self.nexttokentype = n:concat(), 'number'
 end
 
 function Tokenizer:parseSymbol()
@@ -207,7 +210,7 @@ function Tokenizer:parseSymbol()
 	for _,symbol in ipairs(self.symbols) do
 		if r:canbe(string.patescape(symbol)) then
 ---DEBUG(parser.base.tokenizer): print('read symbol ['..(r.index-#r.lasttoken)..','..r.index..']: '..r.lasttoken)
-			coroutine.yield(r.lasttoken, 'symbol')
+			self.nexttoken, self.nexttokentype = r.lasttoken, 'symbol'
 			return true
 		end
 	end
@@ -235,15 +238,15 @@ function Tokenizer:consume()
 
 	self.token = self.nexttoken
 	self.tokentype = self.nexttokentype
-	if coroutine.status(self.gettokenthread) == 'dead' then
+	if not self.gettokenthread then
 		self.nexttoken = nil
 		self.nexttokentype = nil
 		-- done = true
 		return
 	end
-	local status, nexttoken, nexttokentype = coroutine.resume(self.gettokenthread)
+	local errs = self:gettokenthread()
 	-- detect errors
-	if not status then
+	if self.errors or errs then
 		local err = nexttoken
 		error{
 			msg = err,
@@ -252,9 +255,9 @@ function Tokenizer:consume()
 			pos = self:getpos(),
 			traceback = debug.traceback(self.gettokenthread),
 		}
+	elseif self.r:done() and self.gettokenthread then
+	    return
 	end
-	self.nexttoken = nexttoken
-	self.nexttokentype = nexttokentype
 end
 
 function Tokenizer:getpos()

@@ -12,9 +12,10 @@ DataReader gets chars as input, turns them into ... collections-of-chars?
 Tokenizer gets collections-of-chars as input, turns them into tokens
 Parser gets tokens as input, turns them into AST nodes
 --]]
-local table = require 'ext.table'
-local class = require 'ext.class'
-local assert = require 'ext.assert'
+--local table = require 'ext.table'
+--local class = require 'ext.class'
+--local assert = require 'ext.assert'
+local cli = require 'parser.base.cli'
 
 local DataReader = class()
 
@@ -22,6 +23,7 @@ local DataReader = class()
 -- In case someone doesn't want tracking all tokens done for whatever reason (slowdown, memory, etc)
 -- enable/disable this to make token-tracking optional
 DataReader.tracktokens = true
+cli.name = 'parserLT9'
 
 function DataReader:init(data)
 	self.data = data
@@ -43,6 +45,7 @@ function DataReader:init(data)
 end
 
 function DataReader:done()
+	cli:toast(self.index, #self.data, "Parser:")
 	return self.index > #self.data
 end
 

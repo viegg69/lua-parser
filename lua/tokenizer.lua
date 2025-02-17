@@ -1,5 +1,5 @@
-local table = require 'ext.table'
-local assert = require 'ext.assert'
+--local table = require 'ext.table'
+--local assert = require 'ext.assert'
 local Tokenizer = require 'parser.base.tokenizer'
 
 local LuaTokenizer = Tokenizer:subclass()
@@ -66,7 +66,8 @@ function LuaTokenizer:parseHexNumber(...)
 				n:insert'ULL'
 			end
 		end
-		coroutine.yield(n:concat(), 'number')
+		self.nexttoken, self.nexttokentype = n:concat(), 'number'
+		return true
 	else
 		--return LuaTokenizer.super.parseHexNumber(self, ...)
 		local token = r:mustbe('[%da-fA-F]+', 'malformed number')
@@ -78,7 +79,8 @@ function LuaTokenizer:parseHexNumber(...)
 				n:insert'ULL'
 			end
 		end
-		coroutine.yield(n:concat(), 'number')
+		self.nexttoken, self.nexttokentype = n:concat(), 'number'
+		return true
 	end
 end
 
@@ -98,7 +100,8 @@ function LuaTokenizer:parseDecNumber()
 			n:insert'ULL'
 		end
 	end
-	coroutine.yield(n:concat(), 'number')
+	self.nexttoken, self.nexttokentype = n:concat(), 'number'
+	return true
 end
 
 return LuaTokenizer

@@ -1,21 +1,19 @@
 --[[
 parser.base.ast returns the BaseAST root of all AST nodes
-
 TODO ...
-... but parser.lua.ast (and maybe soon parser.grammar.ast) return a collection-of-nodes, which are key'd to the token ... hmm ...
-maybe for consistency I should have parser.lua.ast return the LuaAST, which is an BaseAST child, and parent of all Lua AST nodes ...
-... and give that node a member htat holds a key/value map to all nodes per token ...
-But using a namespace is definitely convenient, especially with all the member subclasses and methods that go in it (traverse, nodeclass, etc)
-... though these can easily turn into member fields and member methods
+... nhưng parser.lua.ast (và có thể là parser.grammar.ast) trả về một tập hợp các nút, được khóa vào mã thông báo ... hmm ...
+có lẽ để thống nhất, tôi nên để parser.lua.ast trả về LuaAST, là con của BaseAST và là cha của tất cả các nút Lua AST ...
+... và cung cấp cho nút đó một thành viên htat giữ bản đồ khóa/giá trị cho tất cả các nút trên mỗi mã thông báo ...
+Nhưng sử dụng không gian tên chắc chắn là tiện lợi, đặc biệt là với tất cả các lớp con thành viên và phương thức đi kèm trong đó (traverse, nodeclass, v.v.)
+... mặc dù chúng có thể dễ dàng biến thành các trường thành viên và phương thức thành viên
 
-tempting to replace the 'ast' namespace with just LuaAST itself, and keep the convention that keys beginning with `_` are subclasses...
+thử thay thế không gian tên 'ast' chỉ bằng chính LuaAST và giữ nguyên quy ước rằng các khóa bắt đầu bằng `_` là các lớp con...
 --]]
-local table = require 'ext.table'
-local assert = require 'ext.assert'
-local tolua = require 'ext.tolua'
-
+--local table = require 'ext.table'
+--local assert = require 'ext.assert'
+--local tolua = require 'ext.tolua'
+--local bit = require 'parser.lua.op'
 local BaseAST = require 'parser.base.ast'
-
 
 -- namespace table of all Lua AST nodes
 -- TODO get rid of parser's dependency on this?  or somehow make the relation between parser rules and ast's closer, like generate the AST from the parser-rules?
@@ -24,7 +22,6 @@ local ast = {}
 
 -- Lua-specific parent class.  root of all other ast node classes in this file.
 local LuaAST = BaseAST:subclass()
-
 -- assign to 'ast.node' to define it as the Lua ast's parent-most node class
 ast.node = LuaAST
 
@@ -35,25 +32,30 @@ args:
 local slashNByte = ('\n'):byte()
 function LuaAST:serializeRecursiveMember(field, args)
 	local maintainSpan
-	if args then
-		maintainSpan = args.maintainSpan
+	local prettyPrint
+	local TAB = ' '
+	if args and (args.maintainSpan or args.prettyPrint) then
+		maintainSpan, prettyPrint = true, true
+		ast.SPACE = '\n';
+		ast.TAB = '\t';
+		TAB=''
 	end
 	local s = ''
-	-- :serialize() impl provided by child classes
-	-- :serialize() should call traversal in-order of parsing (why I want to make it auto and assoc wth the parser and grammar and rule-generated ast node classes)
-	-- that means serialize() itself should never call serialize() but only call the consume() function passed into it (for modularity's sake)
-	-- it might mean i should capture all nodes too, even those that are fixed, like keywords and symbols, for the sake of reassmbling the syntax
+	-- :serialize() impl được cung cấp bởi các lớp con
+	-- :serialize() nên gọi duyệt theo thứ tự phân tích cú pháp (tại sao tôi muốn làm cho nó tự động và liên kết với trình phân tích cú pháp và ngữ pháp và các lớp nút ast được tạo theo quy tắc)
+	-- điều đó có nghĩa là bản thân serialize() không bao giờ nên gọi serialize() mà chỉ gọi hàm consume() được truyền vào nó (vì mục đích mô-đun)
+	-- nó có thể có nghĩa là tôi cũng nên nắm bắt tất cả các nút, ngay cả những nút cố định, như từ khóa và ký hiệu, vì mục đích lắp ráp lại cú pháp
 	local line = 1
 	local col = 1
 	local index = 1
 	local consume
 	local lastspan
-	consume = function(x)
+	consume = function(x, tab)
 		if type(x) == 'number' then
 			x = tostring(x)
 		end
 		if type(x) == 'string' then
-			-- here's our only string join
+			-- đây là chuỗi nối duy nhất của chúng ta
 			local function append(u)
 				for i=1,#u do
 					if u:byte(i) == slashNByte then
@@ -67,31 +69,33 @@ function LuaAST:serializeRecursiveMember(field, args)
 				s = s .. u
 			end
 
-			-- TODO here if you want ... pad lines and cols until we match the original location (or exceed it)
-			-- to do that, track appended strings to have a running line/col counter just like we do in parser
-			-- to do that, separate teh updatelinecol() in the parser to work outside datareader
-			if maintainSpan and lastspan then
+			-- TODO ở đây nếu bạn muốn ... thêm dòng và cột cho đến khi chúng ta khớp với vị trí ban đầu (hoặc vượt quá vị trí đó)
+            -- để thực hiện điều đó, hãy theo dõi các chuỗi được thêm vào để có bộ đếm dòng/cột đang chạy giống như chúng ta làm trong trình phân tích cú pháp
+            -- để thực hiện điều đó, hãy tách riêng updatelinecol() trong trình phân tích cú pháp để hoạt động bên ngoài trình đọc dữ liệu
+			--[[if maintainSpan and lastspan then
 				while line < lastspan.from.line do
 					append'\n'
 				end
-			end
+			end]]
+			
+			
 
-			-- if we have a name coming in, only insert a space if we were already at a name
+			-- nếu chúng ta có một tên sắp tới, chỉ chèn một khoảng trắng nếu chúng ta đã có một tên
 			local namelhs = s:sub(-1):match'[_%w]'
 			local namerhs = x:sub(1,1):match'[_%w]'
 			if namelhs and namerhs then
-				append' '
+				append(' ');--' ';
 			elseif not namelhs and not namerhs then
-				-- TODO here for minification if you want
-				-- if we have a symbol coming in, only insert a space if we were already at a symbol and the two together would make a different valid symbol
-				-- you'll need to search back the # of the max length of any symbol ...
-				append' '
+				-- TODO ở đây để thu nhỏ nếu bạn muốn
+				-- nếu chúng ta có một ký hiệu sắp xuất hiện, chỉ chèn một khoảng trắng nếu chúng ta đã ở một ký hiệu và hai ký hiệu đó kết hợp lại sẽ tạo ra một ký hiệu hợp lệ khác
+				-- bạn sẽ cần phải tìm kiếm lại # độ dài tối đa của bất kỳ ký hiệu nào ...
+				append(TAB);--' ';
 			end
 			append(x)
 		elseif type(x) == 'table' then
 			lastspan = x.span
-			assert.is(x, BaseAST)
-			assert.index(x, field)
+			--assert.is(x, BaseAST)
+			--assert.index(x, field)
 			x[field](x, consume)
 		else
 			error('here with unknown type '..type(x))
@@ -101,22 +105,29 @@ function LuaAST:serializeRecursiveMember(field, args)
 	return s
 end
 
+-- ok maybe it's not such a good idea to use tostring and serialization for the same purpose ...
+LuaAST.__tostring = string.nametostring
+ast.SPACE = '';
+ast.TAB = '';
+ast.CONFIG = {
+    prettyPrint = true
+}
+
 function LuaAST:toLua(args)
-	return self:serializeRecursiveMember('toLua_recursive', args)
+	return self:serializeRecursiveMember('toLua_recursive', args or ast.CONFIG)
 end
 
--- why distinguish toLua() and serialize(consume)?
--- The need for this design pops up more in subclasses.
--- serialize(consume) is used by all language-serializations
--- toLua_recursive(consume) is for Lua-specific serialization (to-be-subclassed)
--- I'm not sure if this is better than just using a fully separate table of serialization functions per node ...
--- toLua() is the external API
+
+-- tại sao lại phân biệt toLua() và serialize(consume)?
+-- Nhu cầu về thiết kế này xuất hiện nhiều hơn ở các lớp con.
+-- serialize(consume) được sử dụng bởi tất cả các ngôn ngữ tuần tự hóa
+-- toLua_recursive(consume) dành cho tuần tự hóa dành riêng cho Lua (sẽ được phân lớp con)
+-- Tôi không chắc liệu điều này có tốt hơn việc chỉ sử dụng một bảng hoàn toàn riêng biệt các hàm tuần tự hóa cho mỗi nút hay không ...
+-- toLua() là API bên ngoài
 function LuaAST:toLua_recursive(consume)
 	return self:serialize(consume)
 end
 
--- ok maybe it's not such a good idea to use tostring and serialization for the same purpose ...
-LuaAST.__tostring = string.nametostring
 
 function LuaAST:exec(...)
 	local code = self:toLua()
@@ -128,13 +139,13 @@ function LuaAST:exec(...)
 end
 
 
--- TODO what's a more flexible way of iterating through all child fields?
--- and what's a more flexible way of constructing AST node subclass, and of specifying their fields,
---  especially with grammar rule construction?
--- ... how about instead make all fields indexed, and then for certain classes give them aliases into the fields?
--- ... same with htmlparser?
--- then in line with this, fields will either point to nodes, or point to tables to nodes?
---  or maybe the tables-of-nodes should themselves be AST nodes?
+-- TODO cách linh hoạt hơn để lặp qua tất cả các trường con là gì?
+-- và cách linh hoạt hơn để xây dựng lớp con nút AST và chỉ định các trường của chúng là gì,
+-- đặc biệt là với cấu trúc quy tắc ngữ pháp?
+-- ... tại sao không lập chỉ mục cho tất cả các trường, sau đó đối với một số lớp nhất định, hãy đặt cho chúng các bí danh vào các trường?
+-- ... tương tự với htmlparser?
+-- sau đó theo hướng này, các trường sẽ trỏ đến các nút hoặc trỏ đến các bảng đến các nút?
+-- hoặc có lẽ các bảng-của-các-nút tự chúng phải là các nút AST?
 local fields = {
 	{'name', 'field'},
 	{'index', 'field'},
@@ -144,7 +155,7 @@ local fields = {
 	{'min', 'one'},
 	{'max', 'one'},
 	{'step', 'one'},
-	{'func', 'one'},		-- should this be a _function, or a string depicting a function?
+	{'func', 'one'},		-- đây có phải là _function hay là chuỗi mô tả một hàm không?
 	{'arg', 'one'},
 	{'key', 'one'},
 	{'expr', 'one'},
@@ -159,11 +170,11 @@ local fields = {
 ast.exec = LuaAST.exec
 
 --[[
-I need to fix this up better to handle short-circuiting, replacing, removing, etc...
-parentFirstCallback is the parent-first traversal method
-childFirstCallback is the child-first traversal
-return what value of the callbacks you want
-returning a new node at the parent callback will not traverse its subsequent new children added to the tree
+Tôi cần sửa lỗi này tốt hơn để xử lý việc đoản mạch, thay thế, xóa, v.v...
+parentFirstCallback là phương thức duyệt parent-first
+childFirstCallback là phương thức duyệt child-first
+trả về giá trị nào của các lệnh gọi lại mà bạn muốn
+trả về một nút mới tại lệnh gọi lại parent sẽ không duyệt các nút con mới tiếp theo của nó được thêm vào cây
 --]]
 local function traverseRecurse(
 	node,
@@ -233,6 +244,7 @@ function LuaAST.copy(n)
 		local name = field[1]
 		local howmuch = field[2]
 		local value = n[name]
+		
 		if value then
 			if howmuch == 'one' then
 				if type(value) == 'table' then
@@ -262,16 +274,14 @@ end
 ast.copy = LuaAST.copy
 
 --[[
-flatten a function:
-for all its calls, insert them as statements inside the function
-this is only possible if the called functions are of a specific form...
-varmap is the mapping from function names to _function objects to inline in the _call's place
+làm phẳng một hàm:
+đối với tất cả các lệnh gọi của nó, hãy chèn chúng dưới dạng các câu lệnh bên trong hàm
+điều này chỉ khả thi nếu các hàm được gọi có dạng cụ thể...
+varmap là ánh xạ từ tên hàm đến các đối tượng _function để nội tuyến tại vị trí _call
 
-
-if the nested function ends with a return ...
-... then insert its declarations (for var remapping) into a statement just before the one with this call
-... and wrap our return contents in parenthesis ... or make general use of ()'s everywhere (for resolution order)
-
+nếu hàm lồng nhau kết thúc bằng return ...
+... thì hãy chèn các khai báo của nó (để ánh xạ lại var) vào một câu lệnh ngay trước câu lệnh có lệnh gọi này
+... và gói nội dung return của chúng ta trong dấu ngoặc đơn ... hoặc sử dụng chung () ở mọi nơi (để giải quyết thứ tự)
 f stmt
 f stmt
 f stmt
@@ -328,17 +338,33 @@ function LuaAST.flatten(f, varmap)
 end
 ast.flatten = LuaAST.flatten
 
-local function consumeconcat(consume, t, sep)
+local function tabs(i, tab)
+    return string.rep(ast.TAB, i or 0);
+end
+local function newline(tab)
+    return tab and (ast.SPACE .. tabs(tab)) or ast.SPACE
+end
+local newtab = -1
+local function consumeconcat(consume, t, sep, tab)
 	for i,x in ipairs(t) do
 		consume(x)
-		if sep and i < #t then
+		if sep and sep:find('\n') and i == #t then
+		    newtab = newtab - 1
+		    consume(newline(newtab))
+		    newtab = newtab + 1
+		elseif sep and i < #t then
 			consume(sep)
 		end
 	end
 end
 
-local function spacesep(stmts, consume)
-	consumeconcat(consume, stmts)
+local function spacesep(stmts, consume, tab)
+	newtab = newtab + 1
+	if newtab > 0 then
+	    consume(newline(newtab));
+	end
+	consumeconcat(consume, stmts, newline(newtab))
+	newtab = newtab - 1
 end
 
 local function commasep(exprs, consume)
@@ -377,9 +403,10 @@ function _block:init(...)
 	for i=1,select('#', ...) do
 		self[i] = select(i, ...)
 	end
+	self.scope = self.scope or nil
 end
-function _block:serialize(consume)
-	spacesep(self, consume)
+function _block:serialize(consume, tab)
+	spacesep(self, consume, tab or 0)
 end
 
 --statements
@@ -398,11 +425,11 @@ function _assign:serialize(consume)
 	commasep(self.exprs, consume)
 end
 
--- should we impose construction constraints _do(_block(...))
--- or should we infer?  _do(...) = {type = 'do', block = {type = 'block, ...}}
--- or should we do neither?  _do(...) = {type = 'do', ...}
--- neither for now
--- but that means _do and _block are identical ...
+-- chúng ta có nên áp đặt các ràng buộc xây dựng _do(_block(...))
+-- hay chúng ta nên suy ra? _do(...) = {type = 'do', block = {type = 'block, ...}}
+-- hay chúng ta không nên làm cả hai? _do(...) = {type = 'do', ...}
+-- không làm gì cả vào lúc này
+-- nhưng điều đó có nghĩa là _do và _block giống hệt nhau ...
 local _do = nodeclass('do', _stmt)
 function _do:init(...)
 	for i=1,select('#', ...) do
@@ -612,13 +639,13 @@ function _arg:serialize(consume)
 	consume('arg'..self.index)
 end
 
--- _local can be an assignment of multi vars to muli exprs
---  or can optionally be a declaration of multi vars with no statements
--- so it will take the form of assignments
--- but it can also be a single function declaration with no equals symbol ...
--- the parser has to accept functions and variables as separate conditions
---  I'm tempted to make them separate symbols here too ...
--- exprs is a table containing: 1) a single function 2) a single assign statement 3) a list of variables
+-- _local có thể là phép gán nhiều biến cho nhiều biểu thức
+-- hoặc tùy chọn có thể là khai báo nhiều biến không có câu lệnh
+-- vì vậy nó sẽ có dạng phép gán
+-- nhưng nó cũng có thể là khai báo hàm đơn không có ký hiệu bằng ...
+-- trình phân tích cú pháp phải chấp nhận các hàm và biến là các điều kiện riêng biệt
+-- Tôi cũng muốn tách chúng thành các ký hiệu riêng biệt ở đây ...
+-- exprs là một bảng chứa: 1) một hàm đơn 2) một câu lệnh gán đơn 3) một danh sách các biến
 local _local = nodeclass('local', _stmt)
 -- TODO just self[1] instead of self.exprs[i]
 function _local:init(exprs)
@@ -705,7 +732,7 @@ function _string:serialize(consume)
 end
 
 local _vararg = nodeclass'vararg'
-function _vararg:serialize(consume) consume'...' end
+function _vararg:serialize(consume) consume((ast.TAB == '' and '' or ' ') .. '...' .. (ast.TAB == '' and '' or ' ')) end
 
 -- TODO 'args' a node, or flatten into self[i] ?
 local _table = nodeclass'table'	-- single-element assigns
@@ -714,8 +741,15 @@ function _table:init(...)
 		self[i] = select(i, ...)
 	end
 end
+
 function _table:serialize(consume)
+	newtab = newtab + 1
 	consume'{'
+	if #self > 2 then
+	    consume(newline(newtab));
+	elseif newtab > 2 then
+	    consume(newline(newtab));
+	end
 	for i,arg in ipairs(self) do
 		-- if it's an assign then wrap the vars[1] with []'s
 		if ast._assign:isa(arg) then
@@ -740,22 +774,30 @@ function _table:serialize(consume)
 			consume','
 		end
 	end
+	newtab = newtab - 1
+	if #self > 2 then
+	    consume(newline(newtab));
+	elseif newtab > 2 then
+	    consume(tabs());
+	end
 	consume'}'
 end
 
--- OK here is the classic example of the benefits of fields over integers:
--- extensibility.
--- attrib was added later
--- as we add/remove fields, that means reordering indexes, and that means a break in compat
--- one workaround to merging the two is just named functions and integer-indexed children
--- another is a per-child traversal routine (like :serialize())
+-- OK, đây là ví dụ kinh điển về lợi ích của trường so với số nguyên:
+-- khả năng mở rộng.
+-- attrib được thêm vào sau
+-- khi chúng ta thêm/xóa trường, điều đó có nghĩa là sắp xếp lại các chỉ mục và điều đó có nghĩa là phá vỡ khả năng tương thích
+-- một giải pháp thay thế để hợp nhất cả hai chỉ là các hàm được đặt tên và các con được lập chỉ mục theo số nguyên
+-- một giải pháp khác là một quy trình duyệt theo từng con (như :serialize())
 local _var = nodeclass'var'	-- variable, lhs of ast._assign's
-function _var:init(name, attrib)
-	self.name = name
+function _var:init(index, attrib, scope)
+	self.index = index
 	self.attrib = attrib
+	self.scope = self.scope or scope
+	--self.name = self.scope:getVariableName(index)
 end
 function _var:serialize(consume)
-	consume(self.name)
+	consume(self.index and self.scope:getVariableName(self.index) or self.name)
 	if self.attrib then
 		-- the extra space is needed for assignments, otherwise lua5.4 `local x<const>=1` chokes while `local x<const> =1` works
 		consume'<'
@@ -818,6 +860,7 @@ function _indexself:serialize(consume)
 	consume':'
 	consume(self.key)
 end
+
 
 local _op = nodeclass'op'
 -- TODO 'args' a node ... or just flatten it into this node ...
